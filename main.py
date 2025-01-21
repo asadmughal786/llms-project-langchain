@@ -15,8 +15,9 @@ from speech_to_text import speech_to_text
 load_dotenv()
 
 # llms model making
-llm = OpenAI(model_name ='gpt-3.5-turbo-instruct', temperature=0.5)
-chain = load_qa_chain(llm,chain_type='stuff')
+llm = OpenAI(model_name='gpt-3.5-turbo-instruct', temperature=0.5)
+chain = load_qa_chain(llm, chain_type='stuff')
+
 
 # Reading the document files
 def read_doc(directory):
@@ -27,6 +28,7 @@ def read_doc(directory):
     documents = file_loader.load()
     return documents
 
+
 # Converting the document into text chunks
 def chunk_data(docs, chunk_size=500, chunk_overlap=100):
     """
@@ -34,6 +36,7 @@ def chunk_data(docs, chunk_size=500, chunk_overlap=100):
     """
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return text_splitter.split_documents(docs)
+
 
 # cosine similarity retrieve results from VectorDB (Pinecone)
 def retrieve_query(query, index, k=2):
@@ -44,6 +47,7 @@ def retrieve_query(query, index, k=2):
         print(f"Error during similarity search: {e}")
         return []
 
+
 # Search answers from VectorDB
 def retrieve_answers(query, index):
     doc_search = retrieve_query(query, index)
@@ -53,6 +57,7 @@ def retrieve_answers(query, index):
     response = chain.run(input_documents=doc_search, question=query)
     return response
 
+
 # Batch documents for processing
 def process_in_batches(documents, batch_size=10):
     """
@@ -60,6 +65,7 @@ def process_in_batches(documents, batch_size=10):
     """
     for i in range(0, len(documents), batch_size):
         yield documents[i:i + batch_size]
+
 
 # Main script
 def main():
@@ -124,13 +130,14 @@ def main():
     while True:
         query = input("Enter your query: ")
         print('Do you want to quit this app? press "Q" to quit the application')
-        if query == 'q' or query=='Q':
+        if query == 'q' or query == 'Q':
             return False
         print("Searching for relevant documents...")
         answer = retrieve_answers(query, vector_store)
         # print(type(answer))
         speech_to_text(text=answer)
         # print("Answer:", answer)
+
 
 if __name__ == "__main__":
     main()
