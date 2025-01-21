@@ -52,6 +52,7 @@ def retrieve_answers(query, index):
     doc_search = retrieve_query(query, index)
     if not doc_search:
         return "No matching documents found."
+    # response = chain.invoke({'question':query, "context":doc_search})
     response = chain.run(input_documents=doc_search, question=query)
     return response
 
