@@ -35,9 +35,6 @@ def chunk_data(docs, chunk_size=500, chunk_overlap=100):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return text_splitter.split_documents(docs)
 
-def similarity_search():
-    pass
-
 # cosine similarity retrieve results from VectorDB (Pinecone)
 def retrieve_query(query, index, k=2):
     try:
