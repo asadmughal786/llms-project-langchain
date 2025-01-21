@@ -73,8 +73,8 @@ def main():
     documents = chunk_data(docs=doc)
     print(f"Number of chunks created: {len(documents)}")
 
-    # for i, doc in enumerate(documents[:5]):  # Display the first 5 chunks for debugging
-    #     print(f"Chunk {i}: {doc.page_content[:200]}...")  # Show a preview of the content
+    # for i, doc in enumerate(documents[:5]):
+    #     print(f"Chunk {i}: {doc.page_content[:200]}...")
 
     # Step 2: Initialize OpenAI embeddings
     print("Initializing OpenAI embeddings...")
