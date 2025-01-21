@@ -9,6 +9,7 @@ from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain.chains.question_answering import load_qa_chain
 from langchain_openai import OpenAI
 import openai
+from speech_to_text import speech_to_text
 
 # Load environment variables from .env
 load_dotenv()
@@ -122,16 +123,16 @@ def main():
     index = pc.Index(index_name)
     vector_store = PineconeVectorStore(index=index, embedding=embeddings)
     # Step 2: Retrieve answers from the index
-    while(True):
+    while True:
         query = input("Enter your query: ")
         print('Do you want to quit this app? press "Q" to quit the application')
         if query == 'q' or query=='Q':
             return False
         print("Searching for relevant documents...")
         answer = retrieve_answers(query, vector_store)
-        print("Answer:", answer)
-
-
+        # print(type(answer))
+        speech_to_text(text=answer)
+        # print("Answer:", answer)
 
 if __name__ == "__main__":
     main()
