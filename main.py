@@ -6,135 +6,91 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai.embeddings import OpenAIEmbeddings
-from langchain.chains.question_answering import load_qa_chain
-from langchain_openai import OpenAI
-import openai
+from langchain_openai import ChatOpenAI
+from langchain.chains import RetrievalQA
+from langchain_core.documents import Document
 from speech_to_text import speech_to_text
 
-# Load environment variables from .env
 load_dotenv()
 
-# llms model making
-llm = OpenAI(model_name='gpt-3.5-turbo-instruct', temperature=0.5)
-chain = load_qa_chain(llm, chain_type='stuff')
+# LLM
+llm = ChatOpenAI(model="gpt-4", temperature=0.4)
 
-
-# Reading the document files
 def read_doc(directory):
-    """
-    Reads all PDF files from a directory and returns the documents.
-    """
-    file_loader = PyPDFDirectoryLoader(directory)
-    documents = file_loader.load()
-    return documents
+    loader = PyPDFDirectoryLoader(directory)
+    return loader.load()
 
-
-# Converting the document into text chunks
-def chunk_data(docs, chunk_size=500, chunk_overlap=100):
-    """
-    Splits documents into smaller chunks to avoid token limits.
-    """
+def chunk_data(docs, chunk_size=800, chunk_overlap=150):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return text_splitter.split_documents(docs)
 
-
-# cosine similarity retrieve results from VectorDB (Pinecone)
-def retrieve_query(query, index, k=2):
-    try:
-        matching_results = index.similarity_search(query, k=k)
-        return matching_results
-    except Exception as e:
-        print(f"Error during similarity search: {e}")
-        return []
-
-
-# Search answers from VectorDB
-def retrieve_answers(query, index):
-    doc_search = retrieve_query(query, index)
-    if not doc_search:
-        return "No matching documents found."
-    # response = chain.invoke({'question':query, "context":doc_search})
-    response = chain.run(input_documents=doc_search, question=query)
-    return response
-
-
-# Batch documents for processing
-def process_in_batches(documents, batch_size=10):
-    """
-    Processes documents in smaller batches to reduce rate-limiting issues.
-    """
+def process_in_batches(documents, batch_size=50):
     for i in range(0, len(documents), batch_size):
         yield documents[i:i + batch_size]
 
-
-# Main script
 def main():
-    # Step 1: Read and split documents
     print("Reading documents...")
-    doc = read_doc("Documents/")
-    print('Number of documents:', len(doc))
+    docs = read_doc("Documents/")
+    print("Docs:", len(docs))
 
-    print("Chunking documents...")
-    documents = chunk_data(docs=doc)
-    print(f"Number of chunks created: {len(documents)}")
+    print("Chunking...")
+    chunks = chunk_data(docs)
+    print("Chunks:", len(chunks))
 
-    # for i, doc in enumerate(documents[:5]):
-    #     print(f"Chunk {i}: {doc.page_content[:200]}...")
+    print("Embeddings...")
+    embeddings = OpenAIEmbeddings()
 
-    # Step 2: Initialize OpenAI embeddings
-    print("Initializing OpenAI embeddings...")
-    embeddings = OpenAIEmbeddings(openai_api_key=os.environ.get('OPENAI_API_KEY'))
-
-    # Step 3: Initialize Pinecone
-    print("Initializing Pinecone...")
-    pinecone_api_key = os.environ.get("PINECONE_API_KEY")
-    pc = Pinecone(api_key=pinecone_api_key)
-
+    print("Pinecone...")
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     index_name = "llms-project"
 
-    existing_indexes = [index_info["name"] for index_info in pc.list_indexes()]
-    print('Existing indexes:', existing_indexes)
+    existing = [i["name"] for i in pc.list_indexes()]
+    print("Indexes:", existing)
 
-    if index_name not in existing_indexes:
+    if index_name not in existing:
         pc.create_index(
             name=index_name,
             dimension=1536,
             metric="cosine",
             spec=ServerlessSpec(cloud="aws", region="us-east-1"),
         )
-        print(f"Index {index_name} created!")
-        index = pc.Index(index_name)
-
-        # Step 4: Add documents to Pinecone in batches
-        print("Adding documents to Pinecone...")
-        vector_store = PineconeVectorStore(index=index, embedding=embeddings)
-
-        for batch in process_in_batches(documents, batch_size=10):
-            try:
-                vector_store.add_documents(documents=batch)
-                print(f"Successfully added a batch of {len(batch)} documents.")
-                time.sleep(1)  # Add delay to avoid rate limits
-            except openai.error.RateLimitError as e:
-                print("Rate limit exceeded. Retrying in 5 seconds...")
-                time.sleep(5)  # Retry after a delay
-            except Exception as e:
-                print(f"Error adding documents: {e}")
-
-        print("Documents successfully added to Pinecone!")
-    else:
-        print(f"Index {index_name} already exists!")
+        print("Index created!")
 
     index = pc.Index(index_name)
+
     vector_store = PineconeVectorStore(index=index, embedding=embeddings)
-    # Step 2: Retrieve answers from the index
+
+    # Upload only if empty
+    stats = index.describe_index_stats()
+    if stats.get("total_vector_count", 0) == 0:
+        print("Uploading vectors...")
+        for batch in process_in_batches(chunks, 50):
+            vector_store.add_documents(batch)
+            print(f"Added batch {len(batch)}")
+
+    print("Building retriever & QA chain...")
+    retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=retriever,
+        return_source_documents=False
+    )
+
     while True:
-        query = input("Enter your query: ")
-        print('Do you want to quit this app? press "Q" to quit the application')
-        if query == 'q' or query == 'Q':
-            return False
-        print("Searching for relevant documents...")
-        answer = retrieve_answers(query, vector_store)
-        speech_to_text(text=answer)
+        question = input("\nEnter your query (Q to quit): ")
+        if question.lower() == "q":
+            break
+
+        print("Searching...")
+        answer = qa_chain.invoke({"query": question})
+        text = answer["result"]
+        print("Answer:", text)
+
+        try:
+            speech_to_text(text=text)
+        except:
+            pass
 
 
 if __name__ == "__main__":
