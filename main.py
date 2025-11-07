@@ -134,9 +134,7 @@ def main():
             return False
         print("Searching for relevant documents...")
         answer = retrieve_answers(query, vector_store)
-        # print(type(answer))
         speech_to_text(text=answer)
-        # print("Answer:", answer)
 
 
 if __name__ == "__main__":
